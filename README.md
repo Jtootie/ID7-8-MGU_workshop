@@ -11,3 +11,6 @@ Keep the complete tools folder beside MguSetup.exe. The bundled SSH helper inclu
 Build the WPF project with .NET 9 using dotnet build. Keep private key material and vehicle data local when sharing builds or logs.
 
 Upstream projects: https://github.com/cauliflowermossgrape/idrive7-8-ssh-root and https://github.com/robertnisipeanu/mgu-store
+
+
+<img width="1303" height="994" alt="image" src="https://github.com/user-attachments/assets/4393f185-bd20-487a-be63-9dd9941848d0" />

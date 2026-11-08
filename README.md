@@ -1,6 +1,6 @@
 # MGU Setup
 
-Windows desktop app for ENET diagnostics, first-time root SSH setup, and MGU Store installation.
+Windows desktop app for first-time root SSH setup and MGU Store installation using an ENET adapter.
 
 - Leave the gateway address blank to discover it automatically. Use **Check ENET status** for a read-only connection check.
 - For first-time SSH setup, run as Administrator, select the exact head-unit variant, and acknowledge the risk checkbox. Flashing clears coding and Digital Key pairings. Use an external coding tool to create any backup or recover coding.

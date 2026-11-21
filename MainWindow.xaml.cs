@@ -34,6 +34,7 @@ public partial class MainWindow : Window
         {
             var info = CreateSshHelperStartInfo();
 
+            await CheckHelperCompatibilityAsync();
             string gateway = await ResolveGatewayAsync();
             info.ArgumentList.Add("status");
             info.ArgumentList.Add("--gateway");
@@ -63,9 +64,13 @@ public partial class MainWindow : Window
     private void UpdateSshAvailability(object sender, RoutedEventArgs e)
     {
         if (SshButton != null)
-            SshButton.IsEnabled = !busy && AcceptRisk.IsChecked == true && Variant.SelectedItem is System.Windows.Controls.ComboBoxItem { Tag: string };
+            SshButton.IsEnabled = FixKeyButton.IsEnabled = !busy && AcceptRisk.IsChecked == true && Variant.SelectedItem is System.Windows.Controls.ComboBoxItem { Tag: string };
     }
-    private async void InstallSsh(object sender, RoutedEventArgs e)
+    private async void InstallSsh(object sender, RoutedEventArgs e) => await RunSshSetupAsync(repairKey: false);
+
+    private async void FixSshKey(object sender, RoutedEventArgs e) => await RunSshSetupAsync(repairKey: true);
+
+    private async Task RunSshSetupAsync(bool repairKey)
     {
         if (busy || AcceptRisk.IsChecked != true) return;
         if (Variant.SelectedItem is not System.Windows.Controls.ComboBoxItem { Tag: string arch })
@@ -78,14 +83,21 @@ public partial class MainWindow : Window
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            await CheckHelperCompatibilityAsync();
             string gateway = await ResolveGatewayAsync();
             State.Text = "Checking vehicle identity…";
-            string vin = await MguDiagnostics.CheckBeforeSshSetup(gateway, timeout.Token);
-            if (MessageBox.Show(this, $"Flash and enable persistent root SSH on {arch}, VIN ending {vin[^7..]}? First-time setup only. Flashing clears coding and Digital Key pairings. Keep the car parked, connected, and on stable power.", "Confirm first-time SSH setup", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+            string vin = await MguDiagnostics.CheckBeforeSshSetup(gateway, timeout.Token, repairKey);
+            string action = repairKey ? "fix-key" : "flash";
+            string title = repairKey ? "Confirm SSH key repair" : "Confirm first-time SSH setup";
+            string description = repairKey
+                ? $"Reflash the {arch} debug image with the root SSH key for VIN ending {vin[^7..]}? Use this repair when enrollment succeeded but root login is refused with Permission denied (publickey)."
+                : $"Flash and enable persistent root SSH on {arch}, VIN ending {vin[^7..]}? First-time setup only.";
+            if (MessageBox.Show(this, description + " Flashing clears coding and Digital Key pairings. Keep the car parked, connected, and on stable power.",
+                title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
             { State.Text = "SSH setup canceled."; return; }
-            if (await MguDiagnostics.CheckBeforeSshSetup(gateway, timeout.Token) != vin) throw new IOException("Vehicle changed. Flash not started.");
+            if (await MguDiagnostics.CheckBeforeSshSetup(gateway, timeout.Token, repairKey) != vin) throw new IOException("Vehicle changed. Flash not started.");
             var info = CreateSshHelperStartInfo();
-            foreach (string arg in new[] { "flash", "--gateway", gateway, "--vin", vin, "--arch", arch, "--persist", "--yes" }) info.ArgumentList.Add(arg);
+            foreach (string arg in new[] { action, "--gateway", gateway, "--vin", vin, "--arch", arch, "--persist", "--yes" }) info.ArgumentList.Add(arg);
             using var process = new Process { StartInfo = info };
             process.OutputDataReceived += (_, args) => Append(args.Data);
             process.ErrorDataReceived += (_, args) => Append(args.Data);
@@ -144,8 +156,35 @@ public partial class MainWindow : Window
         this.preventClose = active && preventClose;
         StoreButton.IsEnabled = CheckButton.IsEnabled = AcceptRisk.IsEnabled =
             GatewayAddress.IsEnabled = Variant.IsEnabled = !active;
-        SshButton.IsEnabled = !active && AcceptRisk.IsChecked == true && Variant.SelectedItem is System.Windows.Controls.ComboBoxItem { Tag: string };
+        SshButton.IsEnabled = FixKeyButton.IsEnabled = !active && AcceptRisk.IsChecked == true && Variant.SelectedItem is System.Windows.Controls.ComboBoxItem { Tag: string };
     }
+    private async Task CheckHelperCompatibilityAsync()
+    {
+        if (!LocateHelper()) throw new IOException("The bundled SSH helper is incomplete.");
+        var info = CreateSshHelperStartInfo();
+        info.ArgumentList.Add("--help");
+        using var process = new Process { StartInfo = info };
+        process.Start();
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited) process.Kill(true);
+            throw new IOException("The SSH helper compatibility check timed out.");
+        }
+        string help = await output + await error;
+        string[] required = ["status", "flash", "fix-key", "--gateway", "--vin", "--arch", "--persist", "--yes",
+                             "id7", "id8-bdc3", "id8-bcp"];
+        if (process.ExitCode != 0 || required.Any(option => !help.Contains(option, StringComparison.Ordinal)))
+            throw new IOException("This SSH helper uses an unsupported command interface. Supply a compatible compiled CLI bundle.");
+        string[] assets = ["01_PRIVATE_KEY.pem", "03_CERTIFICATE.pem", "04_RSA_PRIVATE_KEY.pem",
+                           "05_SSH_ROOT_KEY.pem", "07_M7F1.bin", "13_HEXDUMP.txt", "14_HEXDUMP.txt", "15_HEXDUMP.txt"];
+        if (assets.Any(name => !File.Exists(Path.Combine(folder!, "data", "assets", name))))
+            throw new IOException("The SSH helper is missing a required setup asset.");
+    }
+
     private ProcessStartInfo CreateSshHelperStartInfo()
     {
         var info = new ProcessStartInfo(Path.Combine(folder!, "mgu-ssh-cli.exe"))
@@ -182,4 +221,6 @@ public partial class MainWindow : Window
         if (line != null) Dispatcher.Invoke(() => { Log.AppendText(line + Environment.NewLine); Log.ScrollToEnd(); });
     }
 }
+
+
 

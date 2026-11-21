@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <DefaultItemExcludes>$(DefaultItemExcludes);idrive7-8-ssh-root-main\**</DefaultItemExcludes>
   </PropertyGroup>
 
-  <ItemGroup><Content Include="tools\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup></Project>
+  <ItemGroup><Content Include="tools\**\*" Exclude="tools\**\data\logs\**;tools\**\data\enrollments\**;tools\**\data\preflight\**;tools\**\*.mgu-backup.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup></Project>
+
+

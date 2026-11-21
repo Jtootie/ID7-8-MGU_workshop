@@ -70,7 +70,7 @@ internal static class MguDiagnostics
         return (vin, new System.Net.IPAddress(address.AsSpan(1, 4)).ToString());
     }
 
-    internal static async Task<string> CheckBeforeSshSetup(string gateway, CancellationToken ct)
+    internal static async Task<string> CheckBeforeSshSetup(string gateway, CancellationToken ct, bool repairKey = false)
     {
         using var link = new Link();
         await link.Connect(gateway, ct);
@@ -78,6 +78,7 @@ internal static class MguDiagnostics
         var identity = await link.Read(0x63, 0xf101, ct);
         if (vin.Length != 17 || !vin.All(char.IsAsciiLetterOrDigit) || identity.AsSpan().IndexOf(Convert.FromHexString("0600003F36")) < 0)
             throw new IOException("Could not verify vehicle VIN and supported MGU bootloader.");
+        if (repairKey) return vin;
         var addresses = await link.Read(0x63, 0x172a, ct);
         if (addresses.Length >= 13 && addresses[0] == 0)
         {
@@ -96,3 +97,4 @@ internal static class MguDiagnostics
         return vin;
     }
 }
+
